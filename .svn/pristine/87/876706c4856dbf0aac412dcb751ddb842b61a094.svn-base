@@ -1,0 +1,16 @@
+package cn.zhuchuangsoft.footstone.service;
+
+import cn.zhuchuangsoft.footstone.entity.user.UserAndDevice;
+
+/**
+ * @author 阿白
+ * @date 2019-12-11
+ */
+
+
+public interface IUserAndDeviceService {
+
+    Integer insertUserAndDevice(UserAndDevice userAndDevice);
+
+
+}

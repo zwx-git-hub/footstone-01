@@ -1,0 +1,58 @@
+package cn.zhuchuangsoft.footstone.service;
+
+import cn.zhuchuangsoft.footstone.entity.Device;
+import cn.zhuchuangsoft.footstone.entity.DeviceLine;
+import cn.zhuchuangsoft.footstone.entity.warming.Warming;
+import cn.zhuchuangsoft.footstone.entity.warming.WarmingType;
+
+import java.util.List;
+
+/**
+ * @author 阿白
+ * @date 2019-12-19
+ */
+
+
+public interface IWarmingService {
+
+    /**
+     * 警告列表的展示
+     */
+     List<Warming>getAllWarming(Warming warming);
+    /**
+     * 根据设备编码进行警告列表的展示
+     */
+    List<Warming> getWarmingByCode(String deviceCode,String startTime,String endTime);
+
+    /**
+     * 根据告警编码查看告警详情
+     */
+    Warming  getWarmingByWarmingCode(String warmingCode);
+
+    /**
+     * 根据设备编码进行告警类型的展示
+     * @param deviceTypeCode
+     * @return
+     */
+    List<WarmingType> getWarmingType(String deviceTypeCode);
+
+    /**
+     * 根据设备id&lineId更新highTemp
+     * @param deviceId
+     * @param lineNo
+     * @param highTemp
+     * @return >0说明修改成功
+     */
+    Integer updateHighTemp(String  deviceId , String lineNo , String highTemp);
+
+
+    /**
+     * deviceId 获取 lineNo
+     * @param deviceId
+     * @param lineNo
+     * @return
+     */
+    String selectHighTemp(String deviceId, String lineNo);
+
+    void insertWarmingMassage(List<String> massages, DeviceLine line, Device device);
+}

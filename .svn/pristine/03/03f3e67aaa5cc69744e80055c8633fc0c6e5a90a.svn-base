@@ -1,0 +1,162 @@
+package cn.zhuchuangsoft.footstone.service.impl;
+
+import cn.zhuchuangsoft.footstone.entity.Area;
+import cn.zhuchuangsoft.footstone.entity.DeviceParams;
+import cn.zhuchuangsoft.footstone.entity.QueryParameters;
+import cn.zhuchuangsoft.footstone.entity.device.Device1;
+import cn.zhuchuangsoft.footstone.entity.device.DeviceType;
+import cn.zhuchuangsoft.footstone.entity.device.PoweredDevice;
+import cn.zhuchuangsoft.footstone.entity.warming.WarmingType;
+import cn.zhuchuangsoft.footstone.mappers.*;
+import cn.zhuchuangsoft.footstone.service.IDeviceService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+import java.text.SimpleDateFormat;
+import java.util.*;
+
+@Service
+public class DeviceServiceImpl implements IDeviceService {
+
+    @Autowired
+    private DeviceMapper deviceMapper;
+    @Autowired
+    private UserAndDeviceMapper userAndDeviceMapper;
+    @Autowired
+    private DeviceTypeMapper deviceTypeMapper;
+    @Autowired
+    private WarmingTypeMapper warmingTypeMapper;
+    @Autowired
+    private DeviceHistoryMapper deviceHistoryMapper;
+
+    @Autowired
+    private AreaMapper areaMapper;
+
+    @Override
+    public String selectDeviceTypeCode(String deviceCode) {
+        return deviceMapper.selectDeviceTypeCode(deviceCode);
+    }
+
+    @Override
+    public String selectMoblieByCode(String deviceCode) {
+        return deviceMapper.selectMoblieByCode(deviceCode);
+    }
+
+    @Override
+    public Integer increaseDevice(Device1 device1) {
+        Integer flag=0;
+        flag = addDevice(device1);
+        if(flag==1){
+            return flag;
+        }
+        return flag;
+    }
+
+    @Override
+    public List<Map<String, Object>> findAllDevice(QueryParameters queryParameters) {
+        return deviceMapper.findAllDevice(queryParameters);
+    }
+
+
+    @Override
+    public List<Device1> selectDeviceByProxy(String mobile) {
+        return deviceMapper.selectDeviceByProxy(mobile);
+    }
+
+    @Override
+    public List<Device1> selectDeviceByUser(String mobile) {
+        return deviceMapper.selectDeviceByUser(mobile);
+    }
+
+    @Override
+    public Map<Object,Object> getDeviceByDeviceCode(String deviceCode) {
+        Device1 device = deviceMapper.getDeviceByDeviceCode(deviceCode);
+        Map<Object,Object> maps=new HashMap<Object,Object>();
+        if(!StringUtils.isEmpty(device)){
+            PoweredDevice poweredDevice = deviceHistoryMapper.getPoweredDevice(device.getDeviceCode());
+            List<WarmingType> warmingTypes = warmingTypeMapper.getWarmingType(device.getDeviceTypeCode());
+            if(StringUtils.isEmpty(poweredDevice)){
+                maps.put("device",device);
+                maps.put("powered","");
+                maps.put("warmingType","");
+            }else{
+                maps.put("device",device);
+                maps.put("powered",poweredDevice);
+                maps.put("warmingType",warmingTypes);
+            }
+        }else{
+            maps.put("device","");
+            maps.put("powered","");
+            maps.put("warmingType","");
+            maps.put("msg","设备类型异常");
+        }
+        return maps;
+    }
+
+    @Override
+    public Device1 DeviceByDeviceCode(String sn) {
+        return deviceMapper.getDeviceByDeviceCode(sn);
+    }
+
+    @Override
+    public Integer updateDevice(Device1 device1) {
+        return deviceMapper.updateDevice(device1);
+    }
+
+    @Override
+    public Integer deleteManages(List list) {
+        return deviceMapper.deleteManages(list);
+    }
+
+    @Override
+    public   List<DeviceType> getAllDeviceType() {
+        return deviceTypeMapper.getAllDeviceType();
+    }
+
+    @Override
+    public List<Area> selectProvince() {
+        return areaMapper.selectProvince();
+    }
+
+    /**
+     * 通过deviceId&lineNo获取lineId
+     *
+     * @return
+     */
+    @Override
+    public String selectLineId() {
+        return null;
+    }
+
+    /**
+     * 分割线
+     */
+ /*   private void addDevice(List<Device> data){
+        Integer rows = deviceMapper.addDevice(data);
+        if(rows!=data.size()){
+            throw new InsertException("添加设备条数异常");
+        }
+    }*/
+
+    private Integer addDevice(Device1 device1){
+        device1.setCreateTime(new SimpleDateFormat("YYYY-MM-dd HH:mm").format(new Date()));
+        device1.setUpdateTime(new SimpleDateFormat("YYYY-MM-dd HH:mm").format(new Date()));
+        Integer rows = deviceMapper.addDevices(device1);
+        if(rows!=1){
+            //throw new InsertException("添加设备异常");
+        }
+        return rows;
+    }
+
+    /**
+     * 通过Deviceid&lineNo 获取deivceCode
+     * @param dievceId
+     * @param lineNo
+     * @return
+     */
+    @Override
+    public String selectDeviceCode(String dievceId, String lineNo) {
+        return deviceMapper.selectDevicecode(dievceId,lineNo);
+    }
+}

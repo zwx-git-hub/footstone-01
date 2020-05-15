@@ -1,0 +1,243 @@
+package cn.zhuchuangsoft.footstone.controller;
+
+import cn.zhuchuangsoft.footstone.entity.Device;
+import cn.zhuchuangsoft.footstone.entity.DeviceLine;
+import cn.zhuchuangsoft.footstone.entity.Message;
+import cn.zhuchuangsoft.footstone.service.IDeviceService;
+import cn.zhuchuangsoft.footstone.service.IDeviceWarmingService;
+import cn.zhuchuangsoft.footstone.service.IUserService;
+import cn.zhuchuangsoft.footstone.service.IWarmingService;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.http.client.methods.HttpRequestBase;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.RequestMapping;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+/**
+ * 拉取Jala设备信息和报警信息
+ */
+@Component
+@Slf4j
+public class JalaWarmingController extends BaseController {
+    @Autowired
+    private IDeviceWarmingService deviceWarmingService;
+    @Autowired
+    IUserService userServiceImpl;
+    @Autowired
+    IDeviceService deviceServiceImpl;
+    @Autowired
+    IWarmingService warmingServiceImpl;
+    /**
+     * 拉取jala设备的时时数据
+     * 0/10 * * * * ?  10s拉取一次
+     */
+    @Scheduled(cron = "0/10 * * * * ?")
+    @Async
+    public void getPullDevice() {
+        String authorization = getAuthorization(null);
+        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + ID;
+        try {
+            HttpRequestBase httpRequestBase = getRequestByUrl(url, authorization, 1);
+            String json = getJson(httpRequestBase);
+            JSONObject jsonObject = JSON.parseObject(json);
+            JSONArray data = jsonObject.getJSONArray("Data");
+            List<Device> datas = new ArrayList<>();
+            Integer count = data.size();
+            for (int i = 0; i < count; i++) {
+                JSONObject js = data.getJSONObject(i);
+                Device device = new Device(js);
+                datas.add(device);
+            }
+            if(!datas.isEmpty()){
+                for(Device d:datas){
+                    List<String> parameter = new ArrayList<String>();
+                    String sn=new String(d.getSn());
+                    parameter.add("SN="+sn);
+                    String authorization2 = getAuthorization(parameter);
+                    String url2 = "http://ex-api.jalasmart.com/api/v2/devices/"+ sn;
+                    HttpRequestBase httpRequestBase2 = getRequestByUrl(url2, authorization2, 1);
+                    String json2 = getJson(httpRequestBase2);
+                    JSONObject jsonObject2 = JSON.parseObject(json2);
+                    JSONObject data2 = jsonObject2.getJSONObject("Data");
+                    Device device = new Device(data2);
+                    List<DeviceLine> lines = device.getLines();
+
+                    for (DeviceLine line : lines) {
+                        List<String> massages=new ArrayList<>();
+                        // 获取设定过温进行对比
+                        String highTemp =  warmingServiceImpl.selectHighTemp(d.getDeviceId(),line.getLineNo().toString());
+                        if(null == highTemp || ""==highTemp) {
+                            continue;
+                        }
+                        int highTempNum= Integer.parseInt(highTemp);
+                        if("3PN_H".equals(line.getModel())){
+                            // 三相的判断方式推送过温消息
+                            if(highTempNum<=line.getTempA()){
+                                massages.add("A相过温");
+                            }
+                            if(highTempNum<=line.getTempB()){
+                                massages.add("B相过温");
+                            }
+                            if(highTempNum<=line.getTempC()){
+                                massages.add("C相过温");
+                            }
+                            if(highTempNum<=line.getTempN()){
+                                massages.add("N相过温");
+                            }
+
+                        }else {
+                            // 单相的判断方式推送过温消息
+                            if (highTempNum<=line.getTemp()){
+                                massages.add("过温");
+                            }
+                        }
+                        if(massages.size()>0) {
+                            warmingServiceImpl.insertWarmingMassage(massages, line, d);
+                        }
+                    }
+
+//                    deviceServiceImpl.
+                }
+            }
+
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 拉取jala报警信息
+     * 定时异步
+     */
+//    @Scheduled(cron = "0/10 * * * * ?")
+//    @Async
+    public void getPullWarming(){
+        String authorization = getAuthorization(null);
+        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + ID;
+        try{
+            HttpRequestBase httpRequestBase = getRequestByUrl(url, authorization, 1);
+            String json = getJson(httpRequestBase);
+            JSONObject jsonObject = JSON.parseObject(json);
+            JSONArray data = jsonObject.getJSONArray("Data");
+            List<Device> datas = new ArrayList<>();
+            Integer count = data.size();
+            for (int i = 0; i < count; i++) {
+                JSONObject js = data.getJSONObject(i);
+                Device device = new Device(js);
+                datas.add(device);
+            }
+            for (Device d:datas){
+                List<String> parameter = new ArrayList<String>();
+                parameter.add("ControllerID="+d.getControllerId());
+                parameter.add("Page="+0);
+                String authorization2 = getAuthorization(parameter);
+                String url2 = "http://ex-api.jalasmart.com/api/v2/messages/"+d.getControllerId()+"/"+0;
+                HttpRequestBase httpRequestBase2 = getRequestByUrl(url2,authorization2,1);
+                String json2 = getJson(httpRequestBase2);
+                JSONObject jsonObject2 = JSON.parseObject(json2);
+                JSONArray data2 = jsonObject2.getJSONArray("Data");
+                if(data2.size()>0){
+                    List<Message> list = new ArrayList<Message>();
+                    for (int i=0;i<data2.size();i++){
+                        long createTime = data2.getJSONObject(i).getDate("AddTime").getTime();
+                        long currentTime =System.currentTimeMillis();
+                        if("OFFLINE".equals(data2.getJSONObject(i).getString("Code"))){
+                            Message message = new Message(data2.getJSONObject(i));
+                            list.add(message);
+                            break;
+                        }
+                        //计算时间< 10 分钟就取出来验证
+                       // if((currentTime-createTime)/1000/60<=600){
+                            Message message = new Message(data2.getJSONObject(i));
+                            list.add(message);
+                       // }
+
+                    }
+                    if(!list.isEmpty()){
+                    }
+                }
+
+            }
+        }catch (IOException e){
+            log.info(e.getMessage());
+        }
+    }
+
+
+    /**
+     * ---====================测试=================
+     * @param j
+     * @return
+     */
+    @RequestMapping("/w")
+    public String aa(String j){
+        String authorization = getAuthorization(null);
+        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + ID;
+        System.out.println("-------------------dasd--------------------------");
+        String json="{\"code\":0,\"data\":[{\"id\":2,\"MessageID\":\"5e05d27e4d1d6d12e88fc15c\",\"ControllerID\":\"5d3a6875cb1f5c1810990afb\",\"Code\":\"OFFLINE\",\"Data\":0.0,\"Content\":\"【测试设备J001】2019.12.27 17:44离线\",\"AlarmSeverity\":1,\"AddTime\":\"2019-12-27T09:44:30.122+0000\"}]}";
+        String json2="{\"code\":0,\"data\":[{\"id\":7,\"MessageID\":\"5dd0b5b44c1d6d1d6c4c1733\",\"ControllerID\":\"5d3a6875cb1f5c1810990afb\",\"LineNo\":34,\"Code\":\"Key_TEST\",\"Data\":30.0,\"Content\":\"【测试产品-第三个】 按键试验【30mA】\",\"AlarmSeverity\":1,\"AddTime\":\"2019-11-17T02:51:32.555+0000\"}]}";
+        String json3="{\"code\":0,\"data\":[{\"id\":7,\"MessageID\":\"5dd0b5b44c1d6d1d6c4c1733\",\"ControllerID\":\"5d3a6875cb1f5c1810990afb\",\"LineNo\":34,\"Code\":\"Key_TEST\",\"Data\":30.0,\"Content\":\"【测试产品-第三个】 按键试验【30mA】\",\"AlarmSeverity\":1,\"AddTime\":\"2019-11-17T02:51:32.555+0000\"},{\"id\":8,\"MessageID\":\"5dd0b5b44c1d6d1d6c4c1733\",\"ControllerID\":\"5d3a6875cb1f5c1810990afb\",\"LineNo\":1,\"Code\":\"HV\",\"Data\":30.0,\"Content\":\"电压过低\",\"AlarmSeverity\":1,\"AddTime\":\"2019-11-17T02:51:32.555+0000\"}]}";
+        String json4="{\"code\":0,\"data\":[{\"id\":7,\"MessageID\":\"5dd0b5b44c1d6d1d6c4c1733\",\"ControllerID\":\"5d3a6875cb1f5c1810990afb\",\"LineNo\":34,\"Code\":\"Key_TEST\",\"Data\":30.0,\"Content\":\"【测试产品-第三个】 按键试验【30mA】\",\"AlarmSeverity\":1,\"AddTime\":\"2019-11-17T02:51:32.555+0000\"},{\"id\":8,\"MessageID\":\"5dd0b5b44c1d6d1d6c4c1733\",\"ControllerID\":\"5d3a6875cb1f5c1810990afb\",\"LineNo\":1,\"Code\":\"HV\",\"Data\":30.0,\"Content\":\"电压过低\",\"AlarmSeverity\":1,\"AddTime\":\"2019-11-17T02:51:32.555+0000\"}]}";
+       List<Message> list = new ArrayList<Message>();
+        JSONObject jsonObject2 = JSON.parseObject(json3);
+        JSONArray data2 = jsonObject2.getJSONArray("data");
+        System.out.println(data2);
+            for (int i=0;i<data2.size();i++){
+                long createTime = data2.getJSONObject(i).getDate("AddTime").getTime();
+                long currentTime =System.currentTimeMillis();
+                //从对象中拿到时间
+                long diff=(currentTime-createTime)/1000/60;
+             //  if(diff<=600){
+                    Message message = new Message(data2.getJSONObject(i));
+                System.out.println(message);
+                    list.add(message);
+             //   }
+
+            }
+            if(!list.isEmpty()){
+                deviceWarmingService.insertJalaWarming(list,"5d3a6875cb1f5c1810990afb");
+            }
+
+
+        return "";
+    }
+    public static void main(String []agrs){
+        String json2="{\"code\":0,\"data\":[{\"id\":7,\"MessageID\":\"5dd0b5b44c1d6d1d6c4c1733\",\"ControllerID\":\"5d3a6875cb1f5c1810990afb\",\"LineNo\":34,\"Code\":\"Key_TEST\",\"Data\":30.0,\"Content\":\"【测试产品-第三个】 按键试验【30mA】\",\"AlarmSeverity\":1,\"AddTime\":\"2019-11-17T02:51:32.555+0000\"}]}";
+//        List<Message> list = new ArrayList<Message>();
+//        JSONObject jsonObject2 = JSON.parseObject(json2);
+//        JSONArray data2 = jsonObject2.getJSONArray("data");
+//        System.out.println(data2);
+//        for (int i=0;i<data2.size();i++){
+//            long createTime = data2.getJSONObject(i).getDate("AddTime").getTime();
+//            long currentTime =System.currentTimeMillis();
+//            //从对象中拿到时间
+//            long diff=(currentTime-createTime)/1000/60;
+//            if(diff<=600){
+//
+//            }
+//            System.out.println("当前系统时间为："+currentTime+"下单时间为："+createTime+"两个时间差为："+diff);
+//
+//            System.out.println(data2.getJSONObject(i));
+//            Message message = new Message(data2.getJSONObject(i));
+//            list.add(message);
+//        }
+
+        Object s=4;
+        Integer a=4;
+        if(s.equals(a)){
+            System.out.println("=");
+        }
+
+    }
+
+}

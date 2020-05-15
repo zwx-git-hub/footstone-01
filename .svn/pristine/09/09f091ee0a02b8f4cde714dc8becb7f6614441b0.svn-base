@@ -1,0 +1,603 @@
+package cn.zhuchuangsoft.footstone.controller;
+
+import cn.zhuchuangsoft.footstone.controller.ex.ControlUnsuccessfulException;
+import cn.zhuchuangsoft.footstone.controller.ex.ModificationNameException;
+import cn.zhuchuangsoft.footstone.entity.Device;
+import cn.zhuchuangsoft.footstone.entity.DeviceLine;
+import cn.zhuchuangsoft.footstone.entity.Lines;
+import cn.zhuchuangsoft.footstone.entity.Message;
+import cn.zhuchuangsoft.footstone.service.IDeviceService;
+import cn.zhuchuangsoft.footstone.service.IWarmingService;
+import cn.zhuchuangsoft.footstone.utils.JsonResult;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.http.client.methods.HttpPut;
+import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.entity.StringEntity;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.util.*;
+
+
+@RestController
+@RequestMapping("device")
+public class DeviceController extends BaseController {
+
+    @Autowired
+    IDeviceService deviceServiceImpl;
+    @Autowired
+    IWarmingService warmingServiceImpl;
+
+    /**
+     * 第三方获取设备列表
+     * TODO 并写入数据库
+     *
+     * @return
+     */
+    //@Secured("ROLE_ADMIN")
+    @GetMapping("get-device-all")
+    @ApiOperation(value = "获取所有设备列表")
+    public JsonResult<List<Device>> getDevice() {
+        String authorization = getAuthorization(null);
+        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + ID;
+        try {
+            HttpRequestBase httpRequestBase = getRequestByUrl(url, authorization, 1);
+            String json = getJson(httpRequestBase);
+            JSONObject jsonObject = JSON.parseObject(json);
+            JSONArray data = jsonObject.getJSONArray("Data");
+            List<Device> datas = new ArrayList<>();
+            Integer count = data.size();
+            for (int i = 0; i < count; i++) {
+                JSONObject js = data.getJSONObject(i);
+                Device device = new Device(js);
+                datas.add(device);
+            }
+            return new JsonResult<List<Device>>(SUCCESS, count, datas);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<>(FAILED);
+    }
+
+    /**
+     *
+     * @param sn
+     * @return
+     */
+    @GetMapping("get-device/{SN}")
+    @ApiOperation("使用SN码获取整个网关的设备信息")
+    public JsonResult<Device> getDeviceBySN(@ApiParam("SN码") @PathVariable("SN") String sn) {
+        List<String> parameter = new ArrayList<String>();
+        parameter.add("SN=" + sn);
+        String authorization = getAuthorization(parameter);
+        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + sn;
+        try {
+            HttpRequestBase httpRequestBase = getRequestByUrl(url, authorization, 1);
+            String json = getJson(httpRequestBase);
+            JSONObject jsonObject = JSON.parseObject(json);
+            JSONObject data = jsonObject.getJSONObject("Data");
+            Device device = new Device(data);
+            return new JsonResult<Device>(SUCCESS, device);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<>(FAILED);
+    }
+
+//    @GetMapping("get/{DeviceID}/lines/{LineID}")
+//    @ApiOperation("获取单个单相线路详情，线路有单相和三相区分，现暂定model（产品型号）参数带有'3P'的为三相")
+//    public JsonResult<DeviceLine> getLine(@ApiParam("设备ID") @PathVariable("DeviceID") String deviceId, @ApiParam("线路ID") @PathVariable("LineID") String lineId) {
+//        List<String> parameter = new ArrayList<String>();
+//        parameter.add("DeviceID=" + deviceId);
+//        parameter.add("LineID=" + lineId);
+//        String authorization = getAuthorization(parameter);
+//        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId;
+//        try {
+//            HttpRequestBase httpRequestBase = getRequestByUrl(url, authorization, 1);
+//            String json = getJson(httpRequestBase);
+//            JSONObject jsonObject = JSON.parseObject(json);
+//            JSONObject data = jsonObject.getJSONObject("Data");
+//            DeviceLine deviceLine = new DeviceLine(data);
+//            return new JsonResult<DeviceLine>(SUCCESS, deviceLine);
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//        return new JsonResult<>(FAILED);
+//    }
+
+//    @GetMapping("get/{DeviceID}/lines/{LineID}/threephase")
+//    @ApiOperation("获取单个三相线路详情，线路有单相和三相区分，现暂定model（产品型号）参数带有'3P'的为三相")
+//    public JsonResult<DeviceLine> getLineThreePhase(@ApiParam("设备ID") @PathVariable("DeviceID") String deviceId, @ApiParam("线路ID") @PathVariable("LineID") String lineId) {
+//        List<String> parameter = new ArrayList<String>();
+//        parameter.add("DeviceID=" + deviceId);
+//        parameter.add("LineID=" + lineId);
+//        String authorization = getAuthorization(parameter);
+//        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId + "/threephase";
+//        try {
+//            HttpRequestBase httpRequestBase = getRequestByUrl(url, authorization, 1);
+//            String json = getJson(httpRequestBase);
+//            JSONObject jsonObject = JSON.parseObject(json);
+//            JSONObject data = jsonObject.getJSONObject("Data");
+//            DeviceLine deviceLine = new DeviceLine(data);
+//            return new JsonResult<DeviceLine>(SUCCESS, deviceLine);
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//        return new JsonResult<>(FAILED);
+//    }
+
+    @GetMapping("set-switch")
+    @ApiOperation("控制产品开关")
+    public JsonResult<Void> setSwitch(@ApiParam("控制器ID") String controllerId, @ApiParam("线路编号") Integer lineNo, @ApiParam("0:关闭 1:开启") Integer status) {
+//        System.out.println(controllerId + "-" + lineNo + "-" + status);
+        List<String> parameter = new ArrayList<String>();
+        parameter.add("ControllerID=" + controllerId);
+        Lines lines = new Lines(lineNo, status);
+        List<Lines> lineList = new ArrayList<>();
+        lineList.add(lines);
+        parameter.add("Lines=" + JSONArray.toJSONString(lineList));
+        String authorization = getAuthorization(parameter);
+        String url = "http://ex-api.jalasmart.com/api/v2/status/" + controllerId;
+        try {
+            HttpPut put = (HttpPut) getRequestByUrl(url, authorization, 3);
+            JSONObject bodyJson = new JSONObject(true);
+            bodyJson.put("ControllerID", controllerId);
+            JSONObject bodyJson2 = new JSONObject(true);
+            bodyJson2.put("LineNo", lineNo);
+            bodyJson2.put("Status", status);
+            JSONArray jsonArray = new JSONArray();
+            jsonArray.add(bodyJson2);
+            bodyJson.put("Lines", jsonArray);
+            put.setEntity(new StringEntity(bodyJson.toJSONString()));
+            String json = getJson(put);
+            JSONObject jsonObject = JSON.parseObject(json);
+            Integer code = jsonObject.getInteger("Code");
+            if (code != 1) {
+                throw new ControlUnsuccessfulException("控制失败");
+            }
+            return new JsonResult<Void>(SUCCESS);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<Void>(FAILED);
+    }
+
+    @GetMapping("set/device/name")
+    @ApiOperation("设置设备名称")
+    public JsonResult<Void> setDeviceName(@ApiParam("设备ID") String deviceId, @ApiParam("设备名称") String name) {
+        List<String> parameter = new ArrayList<String>();
+        parameter.add("DeviceID=" + deviceId);
+        parameter.add("Name=" + name);
+        String authorization = getAuthorization(parameter);
+        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/name";
+        try {
+            HttpPut put = (HttpPut) getRequestByUrl(url, authorization, 3);
+            JSONObject bodyJson = new JSONObject(true);
+            bodyJson.put("DeviceID", deviceId);
+            bodyJson.put("Name", name);
+            put.setEntity(new StringEntity(bodyJson.toJSONString(), "UTF-8"));
+            JSONObject jsonObject = JSON.parseObject(getJson(put));
+            if (jsonObject.getInteger("Code") != 1) {
+                throw new ModificationNameException("修改设备名称失败 ");
+            }
+            return new JsonResult<>(SUCCESS);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<>(FAILED);
+    }
+
+    @ApiOperation("获取设备警告信息")
+    @GetMapping("get-warning")
+    public JsonResult<List<Message>> getWarning(@ApiParam("控制器ID") String controllerId, @ApiParam("分页，每页最大100条数据，从0开始") Integer page) {
+        List<String> parameter = new ArrayList<String>();
+        parameter.add("ControllerID=" + controllerId);
+        parameter.add("Page=" + page);
+        String authorization = getAuthorization(parameter);
+        String url = "http://ex-api.jalasmart.com/api/v2/messages/" + controllerId + "/" + page;
+        try {
+            HttpRequestBase httpRequestBase = getRequestByUrl(url, authorization, 1);
+            String json = getJson(httpRequestBase);
+            JSONObject jsonObject = JSON.parseObject(json);
+            JSONArray data = jsonObject.getJSONArray("Data");
+            List<Message> list = new ArrayList<Message>();
+
+            for (int i = 0; i < data.size(); i++) {
+                Message message = new Message(data.getJSONObject(i));
+                list.add(message);
+            }
+            return new JsonResult<>(SUCCESS, list);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<>(FAILED);
+    }
+
+    @GetMapping("set/lines/name")
+    @ApiOperation("修改线路名称")
+    public JsonResult<Void> setLineName(@ApiParam("设备ID") String deviceId, @ApiParam("线路ID") String lineId, @ApiParam("线路名称") String name) {
+        List<String> parameter = new ArrayList<String>();
+        parameter.add("DeviceID=" + deviceId);
+        parameter.add("LineID=" + lineId);
+        parameter.add("Name=" + name);
+        String authorization = getAuthorization(parameter);
+        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId + "/name";
+        try {
+            HttpPut put = (HttpPut) getRequestByUrl(url, authorization, 3);
+            JSONObject bodyJson = new JSONObject(true);
+            bodyJson.put("DeviceID", deviceId);
+            bodyJson.put("LineID", lineId);
+            bodyJson.put("Name", name);
+            put.setEntity(new StringEntity(bodyJson.toJSONString(), "UTF-8"));
+            JSONObject jsonObject = JSON.parseObject(getJson(put));
+            if (jsonObject.getInteger("Code") != 1) {
+                throw new ModificationNameException("修改线路名称失败");
+            }
+            return new JsonResult<>(SUCCESS);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<>(FAILED);
+    }
+
+    @GetMapping("set/line/max-current")
+    @ApiOperation("设置最大电流")
+    public JsonResult<Void> setMaxCurrent(@ApiParam("设备ID") String deviceId, @ApiParam("线路ID") String lineId, @ApiParam("最大电流,大于6小于63") int max, @ApiParam("超过最大电流持续多久断开，0-60秒") int duration) {
+        List<String> parameter = new ArrayList<String>();
+        parameter.add("DeviceID=" + deviceId);
+        parameter.add("LineID=" + lineId);
+        parameter.add("Max=" + max);
+        parameter.add("Duration=" + duration);
+        String authorization = getAuthorization(parameter);
+        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId + "/max";
+        try {
+            HttpPut put = (HttpPut) getRequestByUrl(url, authorization, 3);
+            JSONObject bodyJson = new JSONObject(true);
+            bodyJson.put("DeviceID", deviceId);
+            bodyJson.put("LineID", lineId);
+            bodyJson.put("Max", max);
+            bodyJson.put("Duration", duration);
+            put.setEntity(new StringEntity(bodyJson.toJSONString(), "UTF-8"));
+            JSONObject jsonObject = JSON.parseObject(getJson(put));
+            if (jsonObject.getInteger("Code") != 1) {
+                throw new ModificationNameException("修改最大电流失败");
+            }
+            return new JsonResult<>(SUCCESS);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<>(FAILED);
+    }
+
+    @GetMapping("set/line/voltage")
+    @ApiOperation("设置过压和欠压值")
+    public JsonResult<Void> setVoltage(@ApiParam("设备ID") String deviceId, @ApiParam("线路ID") String lineId, @ApiParam("欠压值 范围175-205") Integer under, @ApiParam("过压值 范围235-265") Integer over) {
+        List<String> parameter = new ArrayList<String>();
+        parameter.add("DeviceID=" + deviceId);
+        parameter.add("LineID=" + lineId);
+        parameter.add("Under=" + under);
+        parameter.add("Over=" + over);
+        String authorization = getAuthorization(parameter);
+        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId + "/under";
+        try {
+            HttpPut put = (HttpPut) getRequestByUrl(url, authorization, 3);
+            JSONObject bodyJson = new JSONObject(true);
+            bodyJson.put("DeviceID", deviceId);
+            bodyJson.put("LineID", lineId);
+            bodyJson.put("Under", under);
+            bodyJson.put("Over", over);
+            put.setEntity(new StringEntity(bodyJson.toJSONString(), "UTF-8"));
+            JSONObject jsonObject = JSON.parseObject(getJson(put));
+            if (jsonObject.getInteger("Code") != 1) {
+                throw new ModificationNameException("修改电压值失败");
+            }
+            return new JsonResult<>(SUCCESS);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<>(FAILED);
+    }
+
+    @GetMapping("set/line/enabled")
+    @ApiOperation("锁定手动，只有单相的需要使用手柄锁定。")
+    public JsonResult<Void> setEnabled(@ApiParam("设备ID") String deviceId, @ApiParam("线路ID") String lineId, @ApiParam("锁定手动是否开启 0:关闭 1:开启") Integer enabled) {
+        List<String> parameter = new ArrayList<String>();
+        parameter.add("DeviceID=" + deviceId);
+        parameter.add("LineID=" + lineId);
+        parameter.add("Enabled=" + enabled);
+        String authorization = getAuthorization(parameter);
+        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId + "/enabled";
+        try {
+            HttpPut put = (HttpPut) getRequestByUrl(url, authorization, 3);
+            JSONObject bodyJson = new JSONObject(true);
+            bodyJson.put("DeviceID", deviceId);
+            bodyJson.put("LineID", lineId);
+            bodyJson.put("Enabled", enabled);
+            put.setEntity(new StringEntity(bodyJson.toJSONString(), "UTF-8"));
+            JSONObject jsonObject = JSON.parseObject(getJson(put));
+            if (jsonObject.getInteger("Code") != 1) {
+                throw new ModificationNameException("设置手动开关失败");
+            }
+            return new JsonResult<>(SUCCESS);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<>(FAILED);
+    }
+
+    @GetMapping("set/line/leak")
+    @ApiOperation("设置漏电预警值，需要根据isLeakage字段判断是否可以设置该值")
+    public JsonResult<Void> setLeak(@ApiParam("设备ID") String deviceId, @ApiParam("线路ID") String lineId, @ApiParam("漏电预警值 单位mA") Integer leakValue) {
+        List<String> parameter = new ArrayList<String>();
+        parameter.add("DeviceID=" + deviceId);
+        parameter.add("LineID=" + lineId);
+        parameter.add("LeakValue=" + leakValue);
+        String authorization = getAuthorization(parameter);
+        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId + "/leak";
+        try {
+            HttpPut put = (HttpPut) getRequestByUrl(url, authorization, 3);
+            JSONObject bodyJson = new JSONObject(true);
+            bodyJson.put("DeviceID", deviceId);
+            bodyJson.put("LineID", lineId);
+            bodyJson.put("LeakValue", leakValue);
+            put.setEntity(new StringEntity(bodyJson.toJSONString(), "UTF-8"));
+            JSONObject jsonObject = JSON.parseObject(getJson(put));
+            if (jsonObject.getInteger("Code") != 1) {
+                throw new ModificationNameException("设置漏电预警值失败");
+            }
+            return new JsonResult<>(SUCCESS);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<>(FAILED);
+    }
+
+    @GetMapping("set/line/err-leak")
+    @ApiOperation("设置漏电动作值，需要根据isLeakage字段判断是否可以设置该值")
+    public JsonResult<Void> setErrLeak(@ApiParam("设备ID") String deviceId, @ApiParam("线路ID") String lineId, @ApiParam("漏电动作值 单位mA") Integer errLeakValue) {
+        List<String> parameter = new ArrayList<String>();
+        parameter.add("DeviceID=" + deviceId);
+        parameter.add("LineID=" + lineId);
+        parameter.add("Err_LeakValue=" + errLeakValue);
+        String authorization = getAuthorization(parameter);
+        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId + "/err_leak";
+        try {
+            HttpPut put = (HttpPut) getRequestByUrl(url, authorization, 3);
+            JSONObject bodyJson = new JSONObject(true);
+            bodyJson.put("DeviceID", deviceId);
+            bodyJson.put("LineID", lineId);
+            bodyJson.put("Err_LeakValue", errLeakValue);
+            put.setEntity(new StringEntity(bodyJson.toJSONString(), "UTF-8"));
+            JSONObject jsonObject = JSON.parseObject(getJson(put));
+            if (jsonObject.getInteger("Code") != 1) {
+                throw new ModificationNameException("设置漏电动作值失败");
+            }
+            warmingServiceImpl.updateHeightLeakage(deviceServiceImpl.selectDeviceCode(deviceId, lineId), errLeakValue.toString());
+            return new JsonResult<>(SUCCESS);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<>(FAILED);
+    }
+
+    /**
+     * 更新：修改LineId为LineNo字段 原因：数据库缺少LineId字段
+     * @param deviceId 设备编号
+     * @param lineNo 线路编号
+     * @param highTemp 过温动作值
+     * @return
+     */
+    @GetMapping("set/{DeviceId}/line/{LineNo}/err-temp/{HighTemp}")
+    @ApiOperation("设置过温动作值")
+    public JsonResult<Void> setTemp(@ApiParam("设备ID")@PathVariable("DeviceId") String deviceId, @ApiParam("线路ID")@PathVariable("LineNo") String lineNo, @ApiParam("过温动作值 单位℃(暂定限制<=200)")@PathVariable("HighTemp") Integer highTemp) {
+
+        //判断温度是否设置过高，暂定标准<=200
+        if(highTemp>200){
+            return new JsonResult(FAILED);
+        }
+        // 修改成功与否反馈
+        int flag= warmingServiceImpl.updateHighTemp(deviceId,lineNo,highTemp.toString());
+        if(flag<0)
+            return new JsonResult<>(FAILED);
+        return new JsonResult(SUCCESS);
+    }
+
+
+
+    /**
+     * @param deviceId     设备Id
+     * @param lineId       线路Id
+     * @param model        线路的产品型号
+     * @param max          最大电流,大于1小于63
+     * @param duration     持续多久后断开，单位待定，应该是秒
+     * @param under        欠压值 范围175-205
+     * @param over         过压值 范围235-265
+     * @param leakValue    漏电预警值 单位mA
+     * @param errLeakValue 漏电动作值 单位mA
+     * @return
+     */
+    @GetMapping("set/line/all")
+    @ApiOperation("设置阀值")
+    public JsonResult<Void> setThresholdValue(@ApiParam("设备ID") String deviceId, @ApiParam("线路ID") String lineId,
+                                              @ApiParam("产品型号") String model, @ApiParam("最大电流,大于1小于63") Integer max, @ApiParam("持续多久后断开，单位待定，应该是秒") Integer duration,
+                                              @ApiParam("欠压值 范围175-205") Integer under, @ApiParam("过压值 范围235-265") Integer over,
+                                              @ApiParam("漏电预警值 单位mA") Integer leakValue, @ApiParam("漏电动作值 单位mA") Integer errLeakValue) {
+        try {
+            // 判断设置是否成功
+            boolean flag = true;
+            StringBuilder sb = new StringBuilder();
+            Map<String, Object> lineDetailParameters = new HashMap<>();
+            lineDetailParameters.put("DeviceID", deviceId);
+            lineDetailParameters.put("LineID", lineId);
+            String url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId;
+            // 根据产品型号判断线路产品是否为三相（否则为单相） TODO
+            if (StringUtils.isNotBlank(model) && model.contains("3P")) {
+                url = url + "/threephase";
+            }
+
+            String json = getResponseJson(lineDetailParameters, url, 1);
+            JSONObject jsonObject = JSON.parseObject(json);
+            JSONObject data = jsonObject.getJSONObject("Data");
+            DeviceLine oldInfo = new DeviceLine(data);
+
+            // 1.判断是否设置过载
+            if (max < oldInfo.getMax()&&max >oldInfo.getMax() || duration != oldInfo.getDuration()) {
+                Map<String, Object> parameters = new HashMap<>();
+                parameters.put("DeviceID", deviceId);
+                parameters.put("LineID", lineId);
+                parameters.put("Max", max);
+                parameters.put("Duration", duration);
+                url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId + "/max";
+                String responseJsonStr = getResponseJson(parameters, url, 3);
+                jsonObject = JSON.parseObject(responseJsonStr);
+                if (jsonObject.getInteger("Code") != 1) {
+                    flag = false;
+                    sb.append("修改最大电流失败 ");
+                }
+            }
+
+            // 2.判断是否设置过压和欠压
+            if (!under.equals(oldInfo.getUnder()) || !over.equals(oldInfo.getOver())) {
+                Map<String, Object> parameters = new HashMap<>();
+                parameters.put("DeviceID", deviceId);
+                parameters.put("LineID", lineId);
+                parameters.put("Under", under);
+                parameters.put("Over", over);
+                url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId + "/under";
+                String responseJsonStr = getResponseJson(parameters, url, 3);
+                jsonObject = JSON.parseObject(responseJsonStr);
+                if (jsonObject.getInteger("Code") != 1) {
+                    flag = false;
+                    sb.append("修改电压值失败 ");
+                }
+            }
+
+
+            // 3.判断是否设置漏电预警值 isLeakage = 2有漏电预警设置功能
+            if (oldInfo.getIsLeakAge() != null &&oldInfo.getLeakValue() != null && oldInfo.getIsLeakAge() == 2 && !leakValue.equals(oldInfo.getLeakValue())) {
+                Map<String, Object> parameters = new HashMap<>();
+                parameters.put("DeviceID", deviceId);
+                parameters.put("LineID", lineId);
+                parameters.put("LeakValue", leakValue);
+                url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId + "/leak";
+                String responseJsonStr = getResponseJson(parameters, url, 3);
+                jsonObject = JSON.parseObject(responseJsonStr);
+                if (jsonObject.getInteger("Code") != 1) {
+                    flag = false;
+                    sb.append("修改漏电预警值失败 ");
+                }
+            }
+
+            // 4.判断是否设置漏电动作值
+            if (oldInfo != null && oldInfo.getErrLeakValue()!=null &&oldInfo.getIsLeakAge() != null&&  oldInfo.getIsLeakAge() == 2  && !errLeakValue.equals(oldInfo.getErrLeakValue())) {
+                Map<String, Object> parameters = new HashMap<>();
+                parameters.put("DeviceID", deviceId);
+                parameters.put("LineID", lineId);
+                parameters.put("ErrLeakValue", errLeakValue);
+                url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId + "/err_leak";
+                String responseJsonStr = getResponseJson(parameters, url, 3);
+                jsonObject = JSON.parseObject(responseJsonStr);
+                if (jsonObject.getInteger("Code") != 1) {
+                    flag = false;
+                    sb.append("修改漏电动作值失败 ");
+                }
+            }
+            //设置不成功，抛出异常
+            if (!flag) {
+                throw new ModificationNameException(sb.toString());
+            }
+            return new JsonResult<>(SUCCESS);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<>(FAILED);
+    }
+
+    /**
+     * 设备实时监测数据
+     * @param deviceId 设备id
+     * @param lineId 线路id
+     * @param model 线路型号
+     * @return
+     */
+    @GetMapping("get/{DeviceID}/lines/{LineID}/model/{Model}")
+    @ApiOperation("实时监控数据")
+    public JsonResult<DeviceLine> setThresholdValue(@ApiParam("设备ID")@PathVariable("DeviceID") String deviceId, @ApiParam("线路ID")@PathVariable("LineID") String lineId,@ApiParam("型号")@PathVariable("Model") String model){
+        List<String> parameter = new ArrayList<String>();
+        parameter.add("DeviceID=" + deviceId);
+        parameter.add("LineID=" + lineId);
+        String authorization = getAuthorization(parameter);
+        String url="";
+        // 根据型号进行区分，型号共有1P_R、1PN_H、3PN_H、1PN_R。(唔~不利于维护，需不需要用正则嘛？)
+        if ("3PN_H".equals(model)) {
+            url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId + "/threephase";
+        }else {
+            url = "http://ex-api.jalasmart.com/api/v2/devices/" + deviceId + "/lines/" + lineId;
+        }
+        try {
+            HttpRequestBase httpRequestBase = getRequestByUrl(url, authorization, 1);
+            String json = getJson(httpRequestBase);
+            JSONObject jsonObject = JSON.parseObject(json);
+            JSONObject data = jsonObject.getJSONObject("Data");
+            DeviceLine deviceLine = new DeviceLine(data);
+            return new JsonResult<DeviceLine>(SUCCESS, deviceLine);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<>(FAILED);
+    }
+
+    /**
+     * 获取用户（现为默认用户）网关下的所有线路
+     * 更新：更改传输对象为Device对象吧。理由：获取线路详情需要DeviceId 更新时间 ：2020年4月26日11:06:29
+     * @return
+     */
+    @GetMapping("get-line-all")
+    @ApiOperation("获取所有线路")
+    public JsonResult<List<Device>> getDeviceLineAll(){
+
+        //以下获取整个网关
+        String authorization = getAuthorization(null);
+        String url = "http://ex-api.jalasmart.com/api/v2/devices/" + ID;
+        try {
+            HttpRequestBase httpRequestBase = getRequestByUrl(url, authorization, 1);
+            String json = getJson(httpRequestBase);
+            JSONObject jsonObject = JSON.parseObject(json);
+            JSONArray data = jsonObject.getJSONArray("Data");
+            Set<String> sns= new HashSet<>();
+            Integer count = data.size();
+            for (int i = 0; i < count; i++) {
+                JSONObject js = data.getJSONObject(i);
+                Device device = new Device(js);
+                sns.add(device.getSn());
+            }
+            // 获取每个网关
+            List<Device> deviceLines=new ArrayList<>();
+            for (String sn: sns) {
+                List<String> parameter = new ArrayList<String>();
+                parameter.add("SN=" + sn);
+                authorization = getAuthorization(parameter);
+                url = "http://ex-api.jalasmart.com/api/v2/devices/" + sn;
+                httpRequestBase = getRequestByUrl(url, authorization, 1);
+                json = getJson(httpRequestBase);
+                jsonObject = JSON.parseObject(json);
+                JSONObject devices = jsonObject.getJSONObject("Data");
+                Device device = new Device(devices);
+                deviceLines.add(device);
+            }
+            return new JsonResult<List<Device>>(SUCCESS, deviceLines);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new JsonResult<>(FAILED);
+    }
+}

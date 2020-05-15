@@ -1,0 +1,60 @@
+package cn.zhuchuangsoft.footstone.mappers;
+
+import cn.zhuchuangsoft.footstone.entity.DeviceParams;
+import cn.zhuchuangsoft.footstone.entity.QueryParameters;
+import cn.zhuchuangsoft.footstone.entity.device.Device1;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
+import java.util.Map;
+
+public interface DeviceMapper {
+
+    /**
+     * 获取所有设备的设备相关信息
+     * @return
+     */
+
+    List<Map<String,Object>> findAllDevice(QueryParameters queryParameters);
+
+    /**
+     * 根据代理用户id查询设备
+     */
+    List<Device1> selectDeviceByProxy(String mobile);
+
+    /**
+     * 根据普通用户id查询设备
+     */
+    List<Device1> selectDeviceByUser(String mobile);
+
+    /**
+     * 添加设备和用户关系
+     */
+
+    Integer addDevices(Device1 device1);
+
+    /**
+     * 根据设备编码获取某一个设备
+     */
+    Device1 getDeviceByDeviceCode(String deviceCode);
+
+
+
+
+    /**
+     * 修改设备信息
+     */
+    Integer updateDevice(Device1 device1);
+
+    /**
+     * 批量删除设备
+     */
+    Integer deleteManages(List list);
+    @Select("SELECT TYPE_CODE FROM device WHERE DEVICE_CODE =#{deviceCode}")
+    String selectDeviceTypeCode(String deviceCode);
+    @Select("SELECT MOBILE FROM device WHERE DEVICE_CODE =#{deviceCode}")
+    String selectMoblieByCode(String deviceCode);
+
+
+}

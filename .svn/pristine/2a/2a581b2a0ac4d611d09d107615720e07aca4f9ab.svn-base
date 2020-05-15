@@ -1,0 +1,264 @@
+package cn.zhuchuangsoft.footstone.service.impl;
+
+import cn.zhuchuangsoft.footstone.entity.warming.Warming;
+import cn.zhuchuangsoft.footstone.entity.warming.WarmingType;
+import cn.zhuchuangsoft.footstone.mappers.*;
+import cn.zhuchuangsoft.footstone.service.IWarmingService;
+import cn.zhuchuangsoft.footstone.websocket.WebSocketServer;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.List;
+
+/**
+ * @author 阿白
+ * @date 2019-12-19
+ */
+
+@Service
+public class WarmingServiceImpl implements IWarmingService {
+
+    @Autowired
+    private WarmingMapper warmingMapper;
+    @Autowired
+    private WarmingTypeMapper warmingTypeMapper;
+    @Autowired
+    private WarmingSettingMapper warmingSettingMapper;
+    @Autowired
+    private DeviceMapper deviceMapper;
+    @Autowired
+    UserAndDeviceMapper userAndDeviceMapper;
+
+    @Override
+    public List<Warming> getAllWarming(Warming warming) {
+        return warmingMapper.getAllWarming(warming);
+    }
+
+    @Override
+    public List<Warming> getWarmingByCode(String deviceCode,String startTime,String endTime) {
+        return warmingMapper.getWarmingByCode(deviceCode,startTime,endTime);
+    }
+
+    @Override
+    public Warming getWarmingByWarmingCode(String warmingCode) {
+        return warmingMapper.getWarmingByWarmingCode(warmingCode);
+    }
+
+    @Override
+    public List<WarmingType> getWarmingType(String deviceTypeCode) {
+        return warmingTypeMapper.getWarmingType(deviceTypeCode);
+    }
+
+    /**
+     * 根据设备id&lineId更新highTemp
+     *
+     * @param deviceId
+     * @param lineNo
+     * @param highTemp
+     * @return >0说明修改成功
+     */
+    @Override
+    public Integer updateHighTemp(String deviceId, String lineNo, String highTemp) {
+        String deviceCode = deviceMapper.selectDevicecode(deviceId,lineNo);
+        //判断设备是否存在。
+        if(deviceCode!=null||deviceCode!="") {
+            return warmingSettingMapper.updateHighTemp(deviceCode,highTemp);
+        }
+        else {
+            return -1;
+        }
+    }
+
+    /**
+     * deviceId 获取 lineNo
+     * @param deviceId
+     * @param lineNo
+     * @return
+     */
+    @Override
+    public String selectHighTemp(String deviceId, String lineNo) {
+        String deviceNo = deviceMapper.selectDevicecode(deviceId,lineNo);
+        return warmingSettingMapper.selectHighTemp(deviceNo);
+    }
+
+    /**
+     * 插入报警信息并推送
+     * @param massages long(时间)/lineNo/massage/deviceName/deviceId
+     */
+    @Override
+    public void insertWarmingMassage(List<String> massages) {
+
+        String temp="";
+        for (String massage:massages) {
+            Warming warmingTemp = new Warming();
+            String[] strings = massage.split("/");
+            String time = strings[0];
+            String lineNo = strings[1];
+            String warmingmassages = strings[2];
+            String deviceName = strings[3];
+            String deviceId = strings[4];
+            temp = createMassage(deviceName, lineNo, warmingmassages, time);
+
+            // 判断是否需要插入
+            String deviceCode = deviceMapper.selectDevicecode(deviceId, lineNo);
+            int[] id = warmingMapper.isExsits(deviceCode, temp);
+            if ("null".equals(lineNo) || lineNo == null || null == deviceCode || id.length > 0)
+                continue;
+            warmingTemp.setWarmingMsg(temp);
+            warmingTemp.setDeviceCodes(deviceCode);
+            warmingTemp.setWarmingCode(warmingmassages);
+            warmingTemp.setIshandle("0");
+            warmingTemp.setWarmingTime(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Long.decode(time)));
+            // 插入并获取返回值
+            int flag = warmingMapper.insertWarming(warmingTemp);
+
+            if (flag == 0) {
+                continue;
+            }
+            // 根据设备获取的用户名进行推送
+            List<String> users = userAndDeviceMapper.selectUserDevice(deviceCode);
+            if (users.size()>0) {
+                try {
+                    for (String user : users) {
+                        WebSocketServer.sendInfo(temp, user);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+
+        }
+    }
+
+    /**
+     * 根据用户查询 未处理信息
+     *
+     * @param deviceCode
+     * @return
+     */
+    @Override
+    public List<Warming> selectWarmingByDeviceCode(String deviceCode) {
+        return warmingMapper.selectWarmingByUserCode(deviceCode);
+    }
+
+    private String createMassage(String deviceName, String lineNo, String massage, String time) {
+        return new StringBuilder().append(new SimpleDateFormat("yyyy年MM月dd日HH:mm:ss").format(Long.decode(time)))
+                .append(deviceName)
+                .append(lineNo)
+                .append("发生了")
+                .append(massage)
+                .append("事故")
+                .toString();
+    }
+
+    /**
+     * 查询记录是否已存在
+     *
+     * @param deviceCode
+     * @param warmingMsg
+     * @return 返回null 表示不存在
+     */
+    @Override
+    public int[] isExsits(String deviceCode, String warmingMsg) {
+        return warmingMapper.isExsits(deviceCode, warmingMsg);
+    }
+
+    /**
+     * deviceCode 更新heightVoltage
+     *
+     * @param deviceCode
+     * @param heightVoltage
+     * @return
+     */
+    @Override
+    public Integer updateHeightVoltage(String deviceCode, String heightVoltage) {
+
+        return null;
+    }
+
+    /**
+     * deviceCode 更新 lowVoleage
+     *
+     * @param deviceCode
+     * @param lowVoleage
+     * @return
+     */
+    @Override
+    public Integer updateLowVoleage(String deviceCode, String lowVoleage) {
+        return null;
+    }
+
+    /**
+     * deviceCode 更新 heightPower
+     *
+     * @param deviceCode
+     * @param heightPower
+     * @return
+     */
+    @Override
+    public Integer updateHeightPower(String deviceCode, String heightPower) {
+        return null;
+    }
+
+    /**
+     * deviceCode 更新 heightCurrent
+     *
+     * @param deviceCode
+     * @param heightCurrent
+     * @return
+     */
+    @Override
+    public Integer updateHeightCurrent(String deviceCode, String heightCurrent) {
+        if (deviceCode == null || heightCurrent == null)
+            return -1;
+        // 获取型号 根据型号来判断是范围,（暂时根据那边api为准，只有1PN_R为1-40A）
+        String model = deviceCode.split("-")[1];
+        if ("1PN_R".equals(model)) {
+            if (Integer.parseInt(heightCurrent) < 1 || Integer.parseInt(heightCurrent) > 40) {
+                return -1;
+            }
+        } else {
+            if (Integer.parseInt(heightCurrent) < 1 || Integer.parseInt(heightCurrent) > 63)
+                return -1;
+        }
+        return warmingSettingMapper.updateHeightGurrent(deviceCode, heightCurrent);
+    }
+
+    /**
+     * deviceCode 更新 heightLeakage ,若没有deviceCode则自动添加
+     *
+     * @param deviceCode
+     * @param heightLeakage
+     * @return
+     */
+    @Override
+    public Integer updateHeightLeakage(String deviceCode, String heightLeakage) {
+        // 验证heightLeakage范围
+        if (deviceCode == null || heightLeakage == null)
+            return -1;
+        int heightLeakageNum = Integer.parseInt(heightLeakage);
+        if (warmingSettingMapper.selectExists(deviceCode) == null)
+            warmingSettingMapper.insertWarmingSetting(deviceCode);
+        if (heightLeakageNum >= 0)
+            return -1;
+        return warmingSettingMapper.updateHeightLeakage(deviceCode, heightLeakage);
+    }
+
+    /**
+     * deviceCode 更新 ace
+     *
+     * @param deviceCode
+     * @param ace
+     * @return
+     */
+    @Override
+    public Integer updateACE(String deviceCode, String ace) {
+        if (deviceCode == null || ace == null)
+            return -1;
+        if (warmingSettingMapper.selectExists(deviceCode) == null)
+            warmingSettingMapper.insertWarmingSetting(deviceCode);
+        return warmingSettingMapper.updateACE(deviceCode, ace);
+    }
+}

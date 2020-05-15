@@ -1,0 +1,45 @@
+package cn.zhuchuangsoft.footstone.service.impl;
+
+import cn.zhuchuangsoft.footstone.entity.warming.Warming;
+import cn.zhuchuangsoft.footstone.entity.warming.WarmingType;
+import cn.zhuchuangsoft.footstone.mappers.WarmingMapper;
+import cn.zhuchuangsoft.footstone.mappers.WarmingTypeMapper;
+import cn.zhuchuangsoft.footstone.service.IWarmingService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+/**
+ * @author 阿白
+ * @date 2019-12-19
+ */
+
+@Service
+public class WarmingServiceImpl implements IWarmingService {
+
+    @Autowired
+    private WarmingMapper warmingMapper;
+    @Autowired
+    private WarmingTypeMapper warmingTypeMapper;
+    @Override
+    public List<Warming> getAllWarming(Warming warming) {
+        return warmingMapper.getAllWarming(warming);
+    }
+
+    @Override
+    public List<Warming> getWarmingByCode(String deviceCode,String startTime,String endTime) {
+        return warmingMapper.getWarmingByCode(deviceCode,startTime,endTime);
+    }
+
+    @Override
+    public Warming getWarmingByWarmingCode(String warmingCode) {
+        return warmingMapper.getWarmingByWarmingCode(warmingCode);
+    }
+
+    @Override
+    public List<WarmingType> getWarmingType(String deviceTypeCode) {
+        return warmingTypeMapper.getWarmingType(deviceTypeCode);
+    }
+
+}

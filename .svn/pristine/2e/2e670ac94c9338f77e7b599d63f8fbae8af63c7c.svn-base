@@ -1,0 +1,139 @@
+package cn.zhuchuangsoft.footstone.service.impl;
+
+import cn.zhuchuangsoft.footstone.entity.Device;
+import cn.zhuchuangsoft.footstone.entity.DeviceLine;
+import cn.zhuchuangsoft.footstone.entity.user.UserAndDevice;
+import cn.zhuchuangsoft.footstone.entity.warming.Warming;
+import cn.zhuchuangsoft.footstone.entity.warming.WarmingType;
+import cn.zhuchuangsoft.footstone.mappers.*;
+import cn.zhuchuangsoft.footstone.service.IUserAndDeviceService;
+import cn.zhuchuangsoft.footstone.service.IWarmingService;
+import cn.zhuchuangsoft.footstone.websocket.WebSocketServer;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+
+/**
+ * @author 阿白
+ * @date 2019-12-19
+ */
+
+@Service
+public class WarmingServiceImpl implements IWarmingService {
+
+    @Autowired
+    private WarmingMapper warmingMapper;
+    @Autowired
+    private WarmingTypeMapper warmingTypeMapper;
+    @Autowired
+    private WarmingSettingMapper warmingSettingMapper;
+    @Autowired
+    private DeviceMapper deviceMapper;
+    @Autowired
+    UserAndDeviceMapper userAndDeviceMapper;
+
+    @Override
+    public List<Warming> getAllWarming(Warming warming) {
+        return warmingMapper.getAllWarming(warming);
+    }
+
+    @Override
+    public List<Warming> getWarmingByCode(String deviceCode,String startTime,String endTime) {
+        return warmingMapper.getWarmingByCode(deviceCode,startTime,endTime);
+    }
+
+    @Override
+    public Warming getWarmingByWarmingCode(String warmingCode) {
+        return warmingMapper.getWarmingByWarmingCode(warmingCode);
+    }
+
+    @Override
+    public List<WarmingType> getWarmingType(String deviceTypeCode) {
+        return warmingTypeMapper.getWarmingType(deviceTypeCode);
+    }
+
+    /**
+     * 根据设备id&lineId更新highTemp
+     *
+     * @param deviceId
+     * @param lineNo
+     * @param highTemp
+     * @return >0说明修改成功
+     */
+    @Override
+    public Integer updateHighTemp(String deviceId, String lineNo, String highTemp) {
+        String deviceCode = deviceMapper.selectDevicecode(deviceId,lineNo);
+        //判断设备是否存在。
+        if(deviceCode!=null||deviceCode!="") {
+            return warmingSettingMapper.updateHighTemp(deviceCode,highTemp);
+        }
+        else {
+            return -1;
+        }
+    }
+
+    /**
+     * deviceId 获取 lineNo
+     * @param deviceId
+     * @param lineNo
+     * @return
+     */
+    @Override
+    public String selectHighTemp(String deviceId, String lineNo) {
+        String deviceNo = deviceMapper.selectDevicecode(deviceId,lineNo);
+        return warmingSettingMapper.selectHighTemp(deviceNo);
+    }
+
+    /**
+     *
+     * @param massages 报警信息 格式：出错时间+name+linNo+"发生了XX事故"
+     * @param line 事故线路对象
+     * @param device
+     */
+    @Override
+    public void insertWarmingMassage(List<String> massages, DeviceLine line, Device device) {
+        // 创建对象容器及对象。
+        ArrayList<Warming> warmings= new ArrayList<>();
+        String temp="";
+        for (String massage:massages) {
+            Warming warming = new Warming();
+            temp =createMassage(device.getName(),line,massage);
+
+            // 根据设备获取的用户名进行推送
+            List<String> users= userAndDeviceMapper.selectUserDevice(deviceMapper.selectDevicecode(device.getDeviceId(),line.getLineNo().toString()));
+            if (users.size()>0) {
+                try {
+                for (String user:users) {
+                        WebSocketServer.sendInfo(temp, user);
+                }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+
+            warming.setWarmingMsg(createMassage(device.getName(),line,massage));
+            warming.setDeviceCodes(deviceMapper.selectDevicecode(device.getDeviceId(),line.getLineNo().toString()));
+            warming.setWarmingCode(massage);
+            warming.setWarmingTime(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(System.currentTimeMillis())));
+            warmings.add(warming);
+        }
+        if (warmings.size()>0) {
+            warmingMapper.insertWarmings(warmings);
+        }
+    }
+
+    private String createMassage(String deviceName,DeviceLine deviceLine,String massage){
+        return new StringBuilder().append( new SimpleDateFormat("yyyy年MM月dd日HH:mm:ss").format(new Date(System.currentTimeMillis())))
+                .append(deviceName)
+                .append(deviceLine.getLineNo())
+                .append("发生了")
+                .append(massage)
+                .append("事故")
+                .toString();
+    }
+}

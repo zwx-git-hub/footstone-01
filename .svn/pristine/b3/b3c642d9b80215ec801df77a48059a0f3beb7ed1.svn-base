@@ -1,0 +1,22 @@
+package cn.zhuchuangsoft.footstone.mappers;
+
+import cn.zhuchuangsoft.footstone.entity.user.UserAndDevice;
+import org.apache.ibatis.annotations.Insert;
+import org.apache.ibatis.annotations.Param;
+
+/**
+ * @author 阿白
+ * @date 2019-12-11
+ */
+
+
+public interface UserAndDeviceMapper {
+
+
+    @Insert({"INSERT INTO user_device(" +
+            "device_id,user_id,proxy_id)" +
+            "values" +
+            "(#{UserAndDevice.deviceId},#{UserAndDevice.userId},#{UserAndDevice.proxyId})"})
+
+    Integer insertUserDevice(@Param("UserAndDevice") UserAndDevice userAndDevice);
+}

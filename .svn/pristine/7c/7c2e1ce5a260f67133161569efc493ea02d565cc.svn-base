@@ -1,0 +1,50 @@
+package cn.zhuchuangsoft.footstone.mappers;
+
+import cn.zhuchuangsoft.footstone.entity.warming.Warming;
+import org.apache.ibatis.annotations.*;
+
+import java.util.List;
+import java.util.Map;
+
+public interface WarmingMapper {
+
+    /**
+     * 警告列表展示
+     */
+    public List<Warming> getAllWarming(Warming warming);
+
+    /**
+     * 根据设备编码进行警告列表的展示
+     */
+    List<Warming> getWarmingByCode(@Param("deviceCode") String deviceCode, @Param("startTime") String startTime, @Param("endTime") String endTime);
+
+    Warming getWarmingByWarmingCode(String warmingCode);
+
+
+    /**
+     * @param deviceCode
+     * @return
+     */
+    Map<String, Object> selectWarmingByCode(String deviceCode);
+
+    @Insert({"INSERT INTO warming" +
+            "(warming_code,device_code,warming_msg,ishandle,handle_time,handle_msg,warming_time) VALUES " +
+            "(#{warming.warmingCode},#{warming.deviceCodes},#{warming.warmingMsg},#{warming.ishandle},#{warming.handleTime},#{warming.handleMsg},#{warming.warmingTime})"})
+    Integer insertWarming(@Param("warming") Warming warming);
+
+    @Select("SELECT id,warming_code,device_code,warming_msg,ishandle,handle_time,handle_msg,warming_time FROM warming WHERE device_code = #{deviceCode} AND ishandle = '0'")
+    @Results({
+            @Result(id = true, column = "id", property = "id"),
+            @Result(column = "warming_code", property = "warmingCode"),
+            @Result(column = "device_code", property = "deviceCodes"),
+            @Result(column = "warming_msg", property = "warmingMsg"),
+            @Result(column = "ishandle", property = "ishandle"),
+            @Result(column = "handle_time", property = "handleTime"),
+            @Result(column = "handle_msg", property = "handleMsg"),
+            @Result(column = "warming_time", property = "warmingTime"),
+    })
+    List<Warming> selectWarmingByUserCode(@Param("deviceCode") String deviceCode);
+
+    @Select("SELECT id from warming where device_code = #{deviceCode} AND warming_msg = #{warmingMsg};")
+    int[] isExsits(@Param("deviceCode") String deviceCode, @Param("warmingMsg") String warmingMsg);
+}
